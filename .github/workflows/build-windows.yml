@@ -1,0 +1,46 @@
+name: Build Aseprite (Windows)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Aseprite
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Download Pre-built Skia
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod -Uri "https://github.com"
+          $asset = $release.assets | Where-Object { $_.name -like "*Windows-Release-x64.zip" } | Select-Object -First 1
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "skia.zip"
+          Expand-Archive -Path "skia.zip" -DestinationPath "C:\deps\skia"
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure and Compile
+        shell: cmd
+        run: |
+          mkdir build
+          cd build
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLAF_BACKEND=skia -DSKIA_DIR=C:\deps\skia -DSKIA_LIBRARY_DIR=C:\deps\skia\out\Release-x64 -DSKIA_LIBRARY=C:\deps\skia\out\Release-x64\skia.lib ..
+          ninja aseprite
+
+      - name: Package Output
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "build\bin\*" -DestinationPath "Aseprite-Windows.zip"
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aseprite-Windows
+          path: Aseprite-Windows.zip
+          retention-days: 1
